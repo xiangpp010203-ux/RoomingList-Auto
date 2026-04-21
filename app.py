@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="OP 救星：分房表轉換神器", page_icon="🏨")
 st.title("🏨 OP 救星：SCM_Rooming List 自動轉換神器")
-st.write("終極完美版：支援無限人數自動擴充、結尾動態公式與格式重組！")
+st.write("終極完美版：自動擴充、動態公式、並具備 XML 幽靈儲存格自動修復引擎！")
 
 # ==========================================
 # ★ 輔助函式區
@@ -198,40 +198,67 @@ if uploaded_file_B is not None:
             sheet.delete_rows(current_row, rows_to_delete)
         
         # ==========================================
-        # ★ 最新優化：精準重構「總房晚」列的格式與動態公式
+        # 結尾列動態格式化
         # ==========================================
         final_summary_row = current_row
         
-        # 1. 為了安全，先解除最後一列原本的所有合併狀態
         ranges_to_unmerge = [str(r) for r in sheet.merged_cells.ranges if r.min_row <= final_summary_row <= r.max_row]
         for r_str in ranges_to_unmerge:
             sheet.unmerge_cells(r_str)
             
-        # 2. A~Q欄 (1~17)：合併並靠右對齊
         sheet.merge_cells(start_row=final_summary_row, start_column=1, end_row=final_summary_row, end_column=17)
         cell_total = sheet.cell(row=final_summary_row, column=1)
         cell_total.value = "總房晚 Total Room Nights "
-        # 保持原本字體(通常是粗體)，並設定靠右置中
         cell_total.alignment = Alignment(horizontal='right', vertical='center')
         
-        # 3. R欄 (18)：注入動態 SUM 公式
         cell_r = sheet.cell(row=final_summary_row, column=18)
-        # 公式範圍從 14 列一直加總到 最後一列 的上一列
         cell_r.value = f"=SUM(R14:R{final_summary_row - 1})"
         cell_r.alignment = Alignment(horizontal='center', vertical='center')
         
-        # 4. S~V欄 (19~22)：合併，維持原本的底色 (模板自帶)
         sheet.merge_cells(start_row=final_summary_row, start_column=19, end_row=final_summary_row, end_column=22)
+        
+        # ==========================================
+        # ★ 終極安檢關卡：清洗損壞的 XML 合併儲存格
+        # ==========================================
+        seen_cells = set()
+        for m_range in list(sheet.merged_cells.ranges):
+            is_invalid = False
+            
+            # 1. 揪出被壓扁的無效座標 (max < min) 或 1x1 單獨儲存格
+            if m_range.min_row > m_range.max_row or m_range.min_col > m_range.max_col:
+                is_invalid = True
+            elif m_range.min_row == m_range.max_row and m_range.min_col == m_range.max_col:
+                is_invalid = True
                 
+            if is_invalid:
+                sheet.merged_cells.remove(m_range)
+                continue
+                
+            # 2. 揪出相互重疊的儲存格 (Overlap)
+            overlap = False
+            for r in range(m_range.min_row, m_range.max_row + 1):
+                for c in range(m_range.min_col, m_range.max_col + 1):
+                    if (r, c) in seen_cells:
+                        overlap = True
+                        break
+                if overlap: break
+                    
+            if overlap:
+                sheet.merged_cells.remove(m_range)
+            else:
+                for r in range(m_range.min_row, m_range.max_row + 1):
+                    for c in range(m_range.min_col, m_range.max_col + 1):
+                        seen_cells.add((r, c))
+
         output = BytesIO()
         wb.save(output)
         output.seek(0)
         
         st.balloons() 
-        st.success(f"🎉 結尾優化完成！總房晚公式與 A~Q、S~V 欄位完美重組！")
+        st.success(f"🎉 檔案已通過終極安檢！幽靈儲存格清洗完畢，開啟將不再報錯。")
         
         st.download_button(
-            label=f"📥 下載終極名單 ({output_filename})",
+            label=f"📥 下載無瑕疵名單 ({output_filename})",
             data=output,
             file_name=output_filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
