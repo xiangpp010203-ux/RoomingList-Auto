@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="OP 救星：分房表轉換神器", page_icon="🏨")
 st.title("🏨 OP 救星：SCM_Rooming List 自動轉換神器")
-st.write("終極進化版：支援無限人數自動擴充、完整保留底部總計格式！")
+st.write("終極完美版：支援無限人數自動擴充、結尾動態公式與格式重組！")
 
 # ==========================================
 # ★ 輔助函式區
@@ -35,7 +35,7 @@ def clean_str(val):
 uploaded_file_B = st.file_uploader("請上傳【內部系統分房表 (檔案B)】支援 Excel 或 CSV", type=["xlsx", "csv"])
 
 if uploaded_file_B is not None:
-    st.success(f"成功讀取檔案：{uploaded_file_B.name}！正在啟動無限擴充排版引擎...")
+    st.success(f"成功讀取檔案：{uploaded_file_B.name}！正在啟動排版引擎...")
     
     try:
         base_name, ext = os.path.splitext(uploaded_file_B.name)
@@ -68,12 +68,9 @@ if uploaded_file_B is not None:
         
         start_row = 14 
         
-        # ==========================================
-        # ★ 優化 1：定位底部的「總房晚」列，確保它永遠不會被覆蓋
-        # ==========================================
+        # 定位底部的「總房晚」列
         summary_row = None
         for r in range(start_row, sheet.max_row + 1):
-            # 掃描前 3 欄，尋找關鍵字
             for c in range(1, 4):
                 val = str(sheet.cell(row=r, column=c).value or "")
                 if "總房晚" in val or "Total Room Nights" in val:
@@ -82,7 +79,7 @@ if uploaded_file_B is not None:
             if summary_row:
                 break
                 
-        # 解開旅客區塊原有的合併儲存格 (避免格式跑位)，但不破壞 summary_row 的格式
+        # 解開旅客區塊原有的合併儲存格
         end_unmerge_row = summary_row - 1 if summary_row else sheet.max_row
         ranges_to_unmerge = [str(r) for r in sheet.merged_cells.ranges if r.min_row >= start_row and r.max_row <= end_unmerge_row]
         for r_str in ranges_to_unmerge:
@@ -111,9 +108,7 @@ if uploaded_file_B is not None:
             room_remark_str = " / ".join(room_remarks)
             
             for i in range(rows_to_occupy):
-                # ==========================================
-                # ★ 優化 2：智慧擴充機制 (撞到底部或超過2人時動態新增)
-                # ==========================================
+                # 智慧擴充機制
                 need_insert = False
                 if i >= 2:
                     need_insert = True
@@ -122,11 +117,9 @@ if uploaded_file_B is not None:
                     
                 if need_insert:
                     sheet.insert_rows(current_row)
-                    # 總房晚列被往下推了，要同步更新它的位置
                     if summary_row and current_row <= summary_row:
                         summary_row += 1
                     
-                    # 複製上一列的行高與所有格式
                     if sheet.row_dimensions[current_row - 1].height:
                         sheet.row_dimensions[current_row].height = sheet.row_dimensions[current_row - 1].height
                     for col in range(1, sheet.max_column + 1):
@@ -198,18 +191,44 @@ if uploaded_file_B is not None:
                     top_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
         # ==========================================
-        # ★ 優化 3：刪除多餘的空白格式列，確保底部完美收尾
+        # 刪除多餘列，對齊總計區塊
         # ==========================================
         if summary_row and current_row < summary_row:
             rows_to_delete = summary_row - current_row
             sheet.delete_rows(current_row, rows_to_delete)
+        
+        # ==========================================
+        # ★ 最新優化：精準重構「總房晚」列的格式與動態公式
+        # ==========================================
+        final_summary_row = current_row
+        
+        # 1. 為了安全，先解除最後一列原本的所有合併狀態
+        ranges_to_unmerge = [str(r) for r in sheet.merged_cells.ranges if r.min_row <= final_summary_row <= r.max_row]
+        for r_str in ranges_to_unmerge:
+            sheet.unmerge_cells(r_str)
+            
+        # 2. A~Q欄 (1~17)：合併並靠右對齊
+        sheet.merge_cells(start_row=final_summary_row, start_column=1, end_row=final_summary_row, end_column=17)
+        cell_total = sheet.cell(row=final_summary_row, column=1)
+        cell_total.value = "總房晚 Total Room Nights "
+        # 保持原本字體(通常是粗體)，並設定靠右置中
+        cell_total.alignment = Alignment(horizontal='right', vertical='center')
+        
+        # 3. R欄 (18)：注入動態 SUM 公式
+        cell_r = sheet.cell(row=final_summary_row, column=18)
+        # 公式範圍從 14 列一直加總到 最後一列 的上一列
+        cell_r.value = f"=SUM(R14:R{final_summary_row - 1})"
+        cell_r.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # 4. S~V欄 (19~22)：合併，維持原本的底色 (模板自帶)
+        sheet.merge_cells(start_row=final_summary_row, start_column=19, end_row=final_summary_row, end_column=22)
                 
         output = BytesIO()
         wb.save(output)
         output.seek(0)
         
         st.balloons() 
-        st.success(f"🎉 終極優化完成！名單已完美擴充，底部總房晚列與正確版 100% 吻合！")
+        st.success(f"🎉 結尾優化完成！總房晚公式與 A~Q、S~V 欄位完美重組！")
         
         st.download_button(
             label=f"📥 下載終極名單 ({output_filename})",
